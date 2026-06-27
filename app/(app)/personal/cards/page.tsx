@@ -10,10 +10,13 @@ export default async function CardsPage() {
   const { data: ws } = await supabase.from('workspaces').select('id').eq('type', 'personal').single()
   if (!ws) redirect('/select')
 
-  const [cardsRes, banksRes, membersRes] = await Promise.all([
+  const period = new Date().toISOString().slice(0, 7) // YYYY-MM
+
+  const [cardsRes, banksRes, membersRes, statementsRes] = await Promise.all([
     supabase.from('credit_cards').select('*, bank:banks(*)').eq('workspace_id', ws.id).order('created_at'),
     supabase.from('banks').select('*').eq('workspace_id', ws.id),
     supabase.from('personal_members').select('*').eq('workspace_id', ws.id),
+    supabase.from('card_statements').select('*').eq('workspace_id', ws.id).eq('period', period),
   ])
 
   return (
@@ -21,7 +24,9 @@ export default async function CardsPage() {
       cards={cardsRes.data ?? []}
       banks={banksRes.data ?? []}
       members={membersRes.data ?? []}
+      statements={statementsRes.data ?? []}
       workspaceId={ws.id}
+      currentPeriod={period}
     />
   )
 }
