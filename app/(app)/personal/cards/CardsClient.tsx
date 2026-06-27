@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import type { CreditCard, Bank, PersonalMember, CardStatement } from '@/types/database'
+import type { CreditCard, Bank, PersonalMember, CardStatement, StatementStatus } from '@/types/database'
 import ProgressRing from '@/components/ui/ProgressRing'
 
 interface Props {
@@ -51,8 +51,13 @@ export default function CardsClient({ cards, banks, members, statements, workspa
   })
 
   // Statement state
-  const [stmtForm, setStmtForm] = useState({
-    closing_balance: '', minimum_payment: '', due_date: '', status: 'pending' as const,
+  const [stmtForm, setStmtForm] = useState<{
+    closing_balance: string
+    minimum_payment: string
+    due_date: string
+    status: StatementStatus
+  }>({
+    closing_balance: '', minimum_payment: '', due_date: '', status: 'pending',
   })
 
   const fmtMXN = (n: number) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 })
@@ -121,7 +126,7 @@ export default function CardsClient({ cards, banks, members, statements, workspa
       closing_balance: existing ? String(existing.closing_balance) : '',
       minimum_payment: existing?.minimum_payment ? String(existing.minimum_payment) : '',
       due_date: existing?.due_date ?? calcDueDate(currentPeriod, card.cut_day, card.payment_due_day),
-      status: (existing?.status as 'pending') ?? 'pending',
+      status: (existing?.status as StatementStatus) ?? 'pending',
     })
   }
 
