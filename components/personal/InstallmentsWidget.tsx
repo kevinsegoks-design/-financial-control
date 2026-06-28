@@ -50,7 +50,7 @@ export default function InstallmentsWidget({ installments }: Props) {
             <div key={inst.id} style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
                 <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{inst.description}</p>
-                <p style={{ fontSize: 12, fontWeight: 700, color: '#9D7BFF' }}>${inst.monthly_amount.toLocaleString('es-MX')}/mes</p>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#9D7BFF' }}>{new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(inst.monthly_amount)}/mes</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>

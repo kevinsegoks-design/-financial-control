@@ -27,8 +27,7 @@ const BUCKET_META = {
   month:   { label: 'Próximos 30 días', cls: 'sem-month', color: '#30D158' },
 }
 
-const fmtMXN = (n: number) =>
-  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n)
+import { fmtUSDCompact as fmtMXN } from '@/lib/format'
 
 export default function DueSemaphore({ items }: Props) {
   const router = useRouter()

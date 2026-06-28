@@ -41,7 +41,7 @@ export default function HeroMetric({ totalAvailable, totalLimit, totalUsed, memb
       </div>
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6 }}>
         de <span className="mono" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-          ${totalLimit.toLocaleString('es-MX')}
+          {new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(totalLimit)}
         </span> límite total
       </p>
 

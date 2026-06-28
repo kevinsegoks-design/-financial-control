@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import HeroMetric from '@/components/personal/HeroMetric'
 import CreditCardCard from '@/components/personal/CreditCardCard'
-import DueSemaphore from '@/components/personal/DueSemaphore'
+import PaymentAlerts from '@/components/personal/PaymentAlerts'
 import InstallmentsWidget from '@/components/personal/InstallmentsWidget'
+import SmartAdvisor from '@/components/personal/SmartAdvisor'
 import type { CreditCard, CardStatement, Installment, Obligation, ObligationPeriod, DueItem, PersonalMember } from '@/types/database'
 
 interface Props {
@@ -152,26 +153,8 @@ export default function PersonalDashboard({ cards, statements, installments, obl
         memberColor={selectedMember?.color ?? null}
       />
 
-      {/* Overdue alert */}
-      {overdue.length > 0 && (
-        <div className="fade-up-d1" style={{
-          padding: '12px 16px',
-          background: 'rgba(255,69,58,0.08)',
-          border: '1px solid rgba(255,69,58,0.2)',
-          borderRadius: 12,
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{ fontSize: 18 }}>⚠️</span>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 700, color: '#FF453A' }}>
-              {overdue.length} pago{overdue.length > 1 ? 's' : ''} vencido{overdue.length > 1 ? 's' : ''}
-            </p>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              Revisa el semáforo abajo para resolver
-            </p>
-          </div>
-        </div>
-      )}
+      {/* Smart advisor */}
+      <SmartAdvisor cards={filteredCards} statements={filteredStatements} installments={filteredInstallments} />
 
       {/* Tarjetas */}
       <section>
@@ -210,17 +193,14 @@ export default function PersonalDashboard({ cards, statements, installments, obl
         )}
       </section>
 
-      {/* Semáforo */}
+      {/* Payment alerts */}
       <section>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)' }}>
-            🚦 Vencimientos
+            🚦 Pagos
           </h2>
-          <a href="/personal/payments" style={{ fontSize: 11, color: '#9D7BFF', textDecoration: 'none' }}>
-            Registrar pago →
-          </a>
         </div>
-        <DueSemaphore items={filteredDueItems} />
+        <PaymentAlerts items={filteredDueItems} />
       </section>
 
       {/* Diferidos */}

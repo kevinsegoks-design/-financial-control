@@ -11,8 +11,7 @@ interface Props {
   fadeClass?: string
 }
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n)
+import { fmtUSDCompact as fmt } from '@/lib/format'
 
 export default function CreditCardCard({ card, statement, floatClass = 'float-1', fadeClass = 'fade-up' }: Props) {
   const used = statement?.closing_balance ?? 0

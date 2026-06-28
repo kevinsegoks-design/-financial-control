@@ -60,7 +60,7 @@ export default function CardsClient({ cards, banks, members, statements, workspa
     closing_balance: '', minimum_payment: '', due_date: '', status: 'pending',
   })
 
-  const fmtMXN = (n: number) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 })
+  const fmtMXN = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n)
 
   const stmtByCard = Object.fromEntries(statements.map(s => [s.card_id, s]))
 
@@ -431,6 +431,14 @@ export default function CardsClient({ cards, banks, members, statements, workspa
                             </button>
                           ))}
                         </div>
+                        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                          {{
+                            pending: '🕐 El corte llegó pero aún no has pagado',
+                            partial: '💸 Pagaste algo pero queda saldo pendiente',
+                            paid:    '✅ Saldo saldado completamente',
+                            overdue: '🚨 Pasó la fecha límite sin pagar',
+                          }[stmtForm.status]}
+                        </p>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button
