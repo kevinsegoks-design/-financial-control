@@ -6,9 +6,11 @@ interface Props {
   totalAvailable: number
   totalLimit: number
   totalUsed: number
+  memberName?: string | null
+  memberColor?: string | null
 }
 
-export default function HeroMetric({ totalAvailable, totalLimit, totalUsed }: Props) {
+export default function HeroMetric({ totalAvailable, totalLimit, totalUsed, memberName, memberColor }: Props) {
   const pctUsed = totalLimit > 0 ? Math.round((totalUsed / totalLimit) * 100) : 0
 
   return (
@@ -29,7 +31,11 @@ export default function HeroMetric({ totalAvailable, totalLimit, totalUsed }: Pr
         background: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(48,209,88,0.05) 0%, transparent 70%)',
       }} />
 
-      <p className="label-xs" style={{ marginBottom: 8 }}>Cupo disponible total</p>
+      <p className="label-xs" style={{ marginBottom: 8 }}>
+        {memberName ? (
+          <span>Cupo de <span style={{ color: memberColor ?? 'var(--text-secondary)', fontWeight: 700 }}>{memberName}</span></span>
+        ) : 'Cupo disponible total'}
+      </p>
       <div className="breathe mono" style={{ fontSize: 42, fontWeight: 900, color: '#30D158', letterSpacing: '-0.02em', lineHeight: 1 }}>
         $<CountUp value={totalAvailable} decimals={0} />
       </div>

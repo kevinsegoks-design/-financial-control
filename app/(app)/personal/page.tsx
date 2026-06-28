@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PersonalDashboard from './PersonalDashboard'
-import type { CreditCard, CardStatement, Installment, Obligation, ObligationPeriod, DueItem } from '@/types/database'
+import type { CreditCard, CardStatement, Installment, Obligation, ObligationPeriod, DueItem, PersonalMember } from '@/types/database'
 
 function currentPeriod() {
   const d = new Date()
@@ -31,7 +31,7 @@ export default async function PersonalPage() {
   const period = currentPeriod()
 
   // Cargar datos en paralelo
-  const [cardsRes, statementsRes, installmentsRes, obligationsRes, periodsRes] = await Promise.all([
+  const [cardsRes, statementsRes, installmentsRes, obligationsRes, periodsRes, membersRes] = await Promise.all([
     supabase
       .from('credit_cards')
       .select('*, bank:banks(*)')
@@ -57,6 +57,11 @@ export default async function PersonalPage() {
       .select('*')
       .eq('workspace_id', ws.id)
       .eq('period', period),
+    supabase
+      .from('personal_members')
+      .select('*')
+      .eq('workspace_id', ws.id)
+      .order('name'),
   ])
 
   const cards = (cardsRes.data ?? []) as CreditCard[]
@@ -64,6 +69,7 @@ export default async function PersonalPage() {
   const installments = (installmentsRes.data ?? []) as Installment[]
   const obligations = (obligationsRes.data ?? []) as Obligation[]
   const periods = (periodsRes.data ?? []) as ObligationPeriod[]
+  const members = (membersRes.data ?? []) as PersonalMember[]
 
   // Estadísticas
   const totalLimit = cards.reduce((s, c) => s + c.credit_limit, 0)
@@ -111,6 +117,7 @@ export default async function PersonalPage() {
       obligations={obligations}
       periods={periods}
       dueItems={dueItems}
+      members={members}
       stats={{ totalLimit, totalUsed, totalAvailable }}
     />
   )
