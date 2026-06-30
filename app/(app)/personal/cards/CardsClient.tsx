@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import type { CreditCard, Bank, PersonalMember, CardStatement, StatementStatus } from '@/types/database'
+import type { CreditCard, Bank, PersonalMember, CardStatement, StatementStatus, Installment } from '@/types/database'
 import ProgressRing from '@/components/ui/ProgressRing'
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
   banks: Bank[]
   members: PersonalMember[]
   statements: CardStatement[]
+  installments: Installment[]
   workspaceId: string
   currentPeriod: string
 }
@@ -27,7 +28,7 @@ function calcDueDate(period: string, cut_day: number, payment_due_day: number): 
   return `${ny}-${String(nm).padStart(2, '0')}-${String(payment_due_day).padStart(2, '0')}`
 }
 
-export default function CardsClient({ cards, banks, members, statements, workspaceId, currentPeriod }: Props) {
+export default function CardsClient({ cards, banks, members, statements, installments, workspaceId, currentPeriod }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [showAddForm, setShowAddForm] = useState(false)
@@ -36,6 +37,7 @@ export default function CardsClient({ cards, banks, members, statements, workspa
   // Track which card has the edit panel or statement panel open
   const [editCardId, setEditCardId] = useState<string | null>(null)
   const [statementCardId, setStatementCardId] = useState<string | null>(null)
+  const [diferidoCardId, setDiferidoCardId] = useState<string | null>(null)
 
   // Add card form
   const [addForm, setAddForm] = useState({
@@ -58,6 +60,16 @@ export default function CardsClient({ cards, banks, members, statements, workspa
     status: StatementStatus
   }>({
     closing_balance: '', minimum_payment: '', due_date: '', status: 'pending',
+  })
+
+  // Diferido form state
+  const [diferidoForm, setDiferidoForm] = useState({
+    description: '',
+    total_amount: '',
+    total_installments: '',
+    monthly_amount: '',
+    start_date: new Date().toISOString().slice(0, 7),
+    has_interest: false,
   })
 
   const fmtMXN = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n)
@@ -148,6 +160,53 @@ export default function CardsClient({ cards, banks, members, statements, workspa
       : await supabase.from('card_statements').insert(payload)
     setLoading(false)
     if (!error) { setStatementCardId(null); router.refresh() }
+  }
+
+  // ── DIFERIDOS ─────────────────────────────────────────────────────
+  function openDiferido(card: CreditCard) {
+    setEditCardId(null)
+    setStatementCardId(null)
+    setDiferidoCardId(card.id)
+    const stmt = stmtByCard[card.id]
+    setDiferidoForm({
+      description: '',
+      total_amount: stmt ? String(stmt.closing_balance) : '',
+      total_installments: '',
+      monthly_amount: '',
+      start_date: new Date().toISOString().slice(0, 7),
+      has_interest: false,
+    })
+  }
+
+  function calcMonthly(total: string, count: string) {
+    const t = parseFloat(total)
+    const c = parseInt(count)
+    if (!isNaN(t) && !isNaN(c) && c > 0) {
+      setDiferidoForm(f => ({ ...f, monthly_amount: (t / c).toFixed(2) }))
+    }
+  }
+
+  async function handleDiferidoSave(card: CreditCard) {
+    if (!diferidoForm.total_amount || !diferidoForm.total_installments) return
+    setLoading(true)
+    const total = parseFloat(diferidoForm.total_amount)
+    const count = parseInt(diferidoForm.total_installments)
+    const monthly = diferidoForm.monthly_amount ? parseFloat(diferidoForm.monthly_amount) : total / count
+    const { error } = await supabase.from('installments').insert({
+      workspace_id: workspaceId,
+      card_id: card.id,
+      description: diferidoForm.description || 'Diferido',
+      total_amount: total,
+      monthly_amount: parseFloat(monthly.toFixed(2)),
+      total_installments: count,
+      remaining_installments: count,
+      remaining_balance: total,
+      start_date: diferidoForm.start_date + '-01',
+      status: 'active',
+      notes: diferidoForm.has_interest ? 'Con interés' : null,
+    })
+    setLoading(false)
+    if (!error) { setDiferidoCardId(null); router.refresh() }
   }
 
   return (
@@ -246,6 +305,9 @@ export default function CardsClient({ cards, banks, members, statements, workspa
             const usedPct = stmt ? Math.min(100, (stmt.closing_balance / card.credit_limit) * 100) : 0
             const isEditing = editCardId === card.id
             const isStatement = statementCardId === card.id
+            const isDiferido = diferidoCardId === card.id
+            const cardInstallments = installments.filter(i => i.card_id === card.id)
+            const diferidoMonthly = cardInstallments.reduce((s, i) => s + i.monthly_amount, 0)
 
             return (
               <div key={card.id} className="glass" style={{ padding: '16px', borderColor: `${accent}22`, position: 'relative', overflow: 'hidden' }}>
@@ -301,20 +363,42 @@ export default function CardsClient({ cards, banks, members, statements, workspa
                   </div>
                 )}
 
+                {/* Diferidos summary */}
+                {cardInstallments.length > 0 && (
+                  <div style={{ background: 'rgba(157,123,255,0.07)', border: '1px solid rgba(157,123,255,0.15)', borderRadius: 10, padding: '8px 12px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 1 }}>Diferidos activos</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#9D7BFF' }}>
+                        {cardInstallments.length} compra{cardInstallments.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 1 }}>Cuota mensual</span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: '#9D7BFF' }}>{fmtMXN(diferidoMonthly)}</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Action buttons */}
-                {!isEditing && !isStatement && (
+                {!isEditing && !isStatement && !isDiferido && (
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={() => openStatement(card)}
                       style={{ flex: 1, background: `${accent}15`, border: `1px solid ${accent}30`, borderRadius: 8, padding: '8px', color: accent, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                     >
-                      {stmt ? '✏️ Editar saldo' : '+ Registrar saldo'}
+                      {stmt ? '✏️ Saldo' : '+ Saldo'}
+                    </button>
+                    <button
+                      onClick={() => openDiferido(card)}
+                      style={{ background: 'rgba(157,123,255,0.12)', border: '1px solid rgba(157,123,255,0.25)', borderRadius: 8, padding: '8px 10px', color: '#9D7BFF', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      + Diferir
                     </button>
                     <button
                       onClick={() => openEdit(card)}
-                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}
                     >
-                      ⚙️ Editar
+                      ⚙️
                     </button>
                   </div>
                 )}
@@ -367,6 +451,108 @@ export default function CardsClient({ cards, banks, members, statements, workspa
                         </button>
                         <button
                           onClick={() => setEditCardId(null)}
+                          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 14px', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer' }}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* DIFERIDO PANEL */}
+                {isDiferido && (
+                  <div style={{ marginTop: 4 }}>
+                    <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginBottom: 14 }} />
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#9D7BFF', marginBottom: 12 }}>
+                      Registrar diferido
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div>
+                        <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Descripción</label>
+                        <input
+                          className="input-glass"
+                          placeholder="Ej: iPhone, televisor…"
+                          value={diferidoForm.description}
+                          onChange={e => setDiferidoForm(f => ({ ...f, description: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Monto total *</label>
+                        <input
+                          className="input-glass"
+                          type="number"
+                          placeholder="Ej: 800"
+                          value={diferidoForm.total_amount}
+                          onChange={e => {
+                            setDiferidoForm(f => ({ ...f, total_amount: e.target.value }))
+                            calcMonthly(e.target.value, diferidoForm.total_installments)
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <div style={{ flex: 1 }}>
+                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Nº de cuotas *</label>
+                          <input
+                            className="input-glass"
+                            type="number"
+                            placeholder="Ej: 12"
+                            min={1}
+                            value={diferidoForm.total_installments}
+                            onChange={e => {
+                              setDiferidoForm(f => ({ ...f, total_installments: e.target.value }))
+                              calcMonthly(diferidoForm.total_amount, e.target.value)
+                            }}
+                          />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Cuota mensual</label>
+                          <input
+                            className="input-glass"
+                            type="number"
+                            placeholder="Auto-calculado"
+                            value={diferidoForm.monthly_amount}
+                            onChange={e => setDiferidoForm(f => ({ ...f, monthly_amount: e.target.value }))}
+                            style={{ color: diferidoForm.monthly_amount ? '#9D7BFF' : undefined }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Mes de inicio</label>
+                        <input
+                          className="input-glass"
+                          type="month"
+                          value={diferidoForm.start_date}
+                          onChange={e => setDiferidoForm(f => ({ ...f, start_date: e.target.value }))}
+                        />
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)' }}>
+                        <input
+                          type="checkbox"
+                          checked={diferidoForm.has_interest}
+                          onChange={e => setDiferidoForm(f => ({ ...f, has_interest: e.target.checked }))}
+                          style={{ accentColor: '#9D7BFF', width: 14, height: 14 }}
+                        />
+                        Tiene interés (diferido con costo)
+                      </label>
+                      {diferidoForm.monthly_amount && diferidoForm.total_installments && (
+                        <div style={{ background: 'rgba(157,123,255,0.08)', border: '1px solid rgba(157,123,255,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                          <span style={{ color: 'var(--text-muted)' }}>Resumen: </span>
+                          <strong style={{ color: '#9D7BFF' }}>{fmtMXN(parseFloat(diferidoForm.monthly_amount || '0'))}/mes</strong>
+                          <span style={{ color: 'var(--text-muted)' }}> × {diferidoForm.total_installments} cuotas = </span>
+                          <strong style={{ color: 'var(--text-primary)' }}>{fmtMXN(parseFloat(diferidoForm.monthly_amount || '0') * parseInt(diferidoForm.total_installments || '0'))}</strong>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => handleDiferidoSave(card)}
+                          disabled={loading || !diferidoForm.total_amount || !diferidoForm.total_installments}
+                          style={{ flex: 1, background: 'rgba(157,123,255,0.2)', border: '1px solid rgba(157,123,255,0.4)', borderRadius: 8, padding: 10, color: '#9D7BFF', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: loading || !diferidoForm.total_amount || !diferidoForm.total_installments ? 0.5 : 1 }}
+                        >
+                          {loading ? 'Guardando...' : 'Registrar diferido'}
+                        </button>
+                        <button
+                          onClick={() => setDiferidoCardId(null)}
                           style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 14px', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer' }}
                         >
                           Cancelar
