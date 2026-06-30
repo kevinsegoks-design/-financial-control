@@ -29,6 +29,7 @@ const FADE_CLASSES  = ['fade-up', 'fade-up-d1', 'fade-up-d2', 'fade-up-d3', 'fad
 
 export default function PersonalDashboard({ cards, statements, installments, obligations, periods, dueItems, members, workspaceId, stats }: Props) {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
 
   const filteredCards = useMemo(
     () => selectedMemberId ? cards.filter(c => c.personal_member_id === selectedMemberId) : cards,
@@ -181,14 +182,63 @@ export default function PersonalDashboard({ cards, statements, installments, obl
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {filteredCards.map((card, i) => {
               const statement = filteredStatements.find(s => s.card_id === card.id)
+              const isSelected = selectedCardId === card.id
+              const cardInst = filteredInstallments.filter(inst => inst.card_id === card.id)
+              const accent = card.accent_color ?? '#FFD60A'
+              const rate = (card.interest_rate ?? 17) / 100 / 12
+              const remaining = (statement && statement.status !== 'paid') ? statement.closing_balance : 0
               return (
-                <CreditCardCard
-                  key={card.id}
-                  card={card}
-                  statement={statement}
-                  floatClass={FLOAT_CLASSES[i % FLOAT_CLASSES.length]}
-                  fadeClass={FADE_CLASSES[i % FADE_CLASSES.length]}
-                />
+                <div key={card.id}>
+                  <CreditCardCard
+                    card={card}
+                    statement={statement}
+                    floatClass={FLOAT_CLASSES[i % FLOAT_CLASSES.length]}
+                    fadeClass={FADE_CLASSES[i % FADE_CLASSES.length]}
+                    onClick={() => setSelectedCardId(isSelected ? null : card.id)}
+                  />
+                  {/* Detail panel */}
+                  {isSelected && (
+                    <div style={{ margin: '-8px 4px 0', padding: '16px 16px 14px', background: `${accent}08`, border: `1px solid ${accent}25`, borderTop: 'none', borderRadius: '0 0 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {/* Statement summary */}
+                      {statement && statement.status !== 'paid' ? (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>Saldo pendiente · vence {new Date(statement.due_date + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short' })}</p>
+                            {remaining > 0 && <p style={{ fontSize: 11, color: '#FF9F0A', marginTop: 2 }}>⚠️ Interés mensual sin pagar: <strong>${(remaining * rate).toFixed(2)}</strong> ({card.interest_rate ?? 17}% anual)</p>}
+                          </div>
+                          <p style={{ fontSize: 22, fontWeight: 900, color: accent }}>${remaining.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: 12, color: statement?.status === 'paid' ? '#30D158' : 'var(--text-muted)', fontWeight: 600 }}>
+                          {statement?.status === 'paid' ? '✓ Mes pagado al día' : 'Sin estado de cuenta este mes'}
+                        </p>
+                      )}
+                      {/* Diferidos */}
+                      {cardInst.length > 0 && (
+                        <div>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: '#9D7BFF', letterSpacing: '0.05em', marginBottom: 6 }}>📦 DIFERIDOS ACTIVOS</p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            {cardInst.map(inst => (
+                              <div key={inst.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(157,123,255,0.07)', borderRadius: 8, padding: '7px 10px' }}>
+                                <div>
+                                  <p style={{ fontSize: 12, fontWeight: 600 }}>{inst.description}</p>
+                                  <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>Cuota {inst.total_installments - inst.remaining_installments + 1} de {inst.total_installments}</p>
+                                </div>
+                                <p style={{ fontSize: 14, fontWeight: 800, color: '#9D7BFF' }}>${inst.monthly_amount.toFixed(2)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)' }}>/mes</span></p>
+                              </div>
+                            ))}
+                            <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right' }}>
+                              Total diferidos: <strong style={{ color: '#9D7BFF' }}>${cardInst.reduce((s, i) => s + i.monthly_amount, 0).toFixed(2)}/mes</strong>
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      <a href="/personal/cards" style={{ fontSize: 12, color: accent, textDecoration: 'none', fontWeight: 700, textAlign: 'center', padding: '6px', background: `${accent}12`, borderRadius: 8, border: `1px solid ${accent}25` }}>
+                        Ver detalle completo →
+                      </a>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>

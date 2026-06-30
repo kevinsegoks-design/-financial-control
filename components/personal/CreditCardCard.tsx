@@ -8,6 +8,7 @@ interface Props {
   statement?: CardStatement
   floatClass?: string
   fadeClass?: string
+  onClick?: () => void
 }
 
 function Chip() {
@@ -30,7 +31,7 @@ function Chip() {
   )
 }
 
-export default function CreditCardCard({ card, statement, floatClass = 'float-1', fadeClass = 'fade-up' }: Props) {
+export default function CreditCardCard({ card, statement, floatClass = 'float-1', fadeClass = 'fade-up', onClick }: Props) {
   const used = (statement && statement.status !== 'paid') ? statement.closing_balance : 0
   const available = card.credit_limit - used
   const pctFree = card.credit_limit > 0 ? Math.round((available / card.credit_limit) * 100) : 100
@@ -60,6 +61,7 @@ export default function CreditCardCard({ card, statement, floatClass = 'float-1'
   return (
     <div
       className={`${fadeClass} ${floatClass}`}
+      onClick={onClick}
       style={{
         position: 'relative',
         borderRadius: 20,
@@ -68,6 +70,8 @@ export default function CreditCardCard({ card, statement, floatClass = 'float-1'
         background: `linear-gradient(140deg, ${accent}40 0%, ${accent}12 55%, rgba(10,10,20,0.85) 100%)`,
         border: `1px solid ${accent}35`,
         boxShadow: `0 8px 32px ${accent}15, 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 ${accent}25`,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
       }}
     >
       {/* Shine line top */}

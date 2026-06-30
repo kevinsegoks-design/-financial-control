@@ -18,7 +18,11 @@ interface Props {
   currentPeriod: string
 }
 
-const ACCENT_COLORS = ['#FFD60A', '#FF6B9D', '#9D7BFF', '#30D158', '#0A84FF', '#FF9F0A']
+const ACCENT_COLORS = [
+  '#FFD60A', '#FF6B9D', '#9D7BFF', '#30D158', '#0A84FF', '#FF9F0A',
+  '#FF453A', '#64D2FF', '#BF5AF2', '#AC8E68', '#32D74B', '#FF375F',
+  '#6AC4DC', '#FFB340', '#30B0C7', '#34C759',
+]
 
 function calcDueDate(period: string, cut_day: number, payment_due_day: number): string {
   const [year, month] = period.split('-').map(Number)
@@ -30,16 +34,27 @@ function calcDueDate(period: string, cut_day: number, payment_due_day: number): 
   return `${ny}-${String(nm).padStart(2, '0')}-${String(payment_due_day).padStart(2, '0')}`
 }
 
+function calcAmortized(principal: number, annualRate: number, months: number): number {
+  if (annualRate === 0 || months === 0) return months > 0 ? principal / months : 0
+  const r = annualRate / 100 / 12
+  return principal * r * Math.pow(1 + r, months) / (Math.pow(1 + r, months) - 1)
+}
+
 export default function CardsClient({ cards, banks, members, statements, installments, payments, workspaceId, currentPeriod }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [showAddForm, setShowAddForm] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const [editCardId, setEditCardId]         = useState<string | null>(null)
+  const [editCardId, setEditCardId]           = useState<string | null>(null)
   const [statementCardId, setStatementCardId] = useState<string | null>(null)
-  const [diferidoCardId, setDiferidoCardId] = useState<string | null>(null)
-  const [historyCardId, setHistoryCardId]   = useState<string | null>(null)
+  const [diferidoCardId, setDiferidoCardId]   = useState<string | null>(null)
+  const [historyCardId, setHistoryCardId]     = useState<string | null>(null)
+  const [gastoCardId, setGastoCardId]         = useState<string | null>(null)
+  const [showBankManager, setShowBankManager] = useState(false)
+  const [editBankId, setEditBankId]           = useState<string | null>(null)
+  const [editBankName, setEditBankName]       = useState('')
+  const [gastoForm, setGastoForm]             = useState({ amount: '', description: '' })
 
   const [addForm, setAddForm] = useState({
     bank_id: '', nickname: '', last_four: '',
@@ -63,7 +78,7 @@ export default function CardsClient({ cards, banks, members, statements, install
   const [diferidoForm, setDiferidoForm] = useState({
     description: '', total_amount: '', total_installments: '',
     monthly_amount: '', start_date: new Date().toISOString().slice(0, 7),
-    has_interest: false,
+    interest_rate_annual: '', has_interest: false,
   })
 
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short' })
@@ -109,6 +124,57 @@ export default function CardsClient({ cards, banks, members, statements, install
   async function addBank(name: string) {
     const { data } = await supabase.from('banks').insert({ workspace_id: workspaceId, name }).select().single()
     if (data) { setAddForm(f => ({ ...f, bank_id: data.id })); router.refresh() }
+  }
+
+  async function handleBankEditSave(bankId: string) {
+    if (!editBankName.trim()) return
+    await supabase.from('banks').update({ name: editBankName.trim() }).eq('id', bankId)
+    setEditBankId(null)
+    router.refresh()
+  }
+
+  async function handleBankDelete(bankId: string) {
+    const inUse = cards.some(c => c.bank_id === bankId)
+    if (inUse) { alert('No puedes borrar un banco que tiene tarjetas asignadas.'); return }
+    await supabase.from('banks').delete().eq('id', bankId)
+    router.refresh()
+  }
+
+  async function addMember(name: string, color: string) {
+    await supabase.from('personal_members').insert({ workspace_id: workspaceId, name, color })
+    router.refresh()
+  }
+
+  async function handleDeleteMember(memberId: string) {
+    await supabase.from('personal_members').delete().eq('id', memberId)
+    router.refresh()
+  }
+
+  // ── NUEVO GASTO CORRIENTE ─────────────────────────────────────────
+  async function handleNewGasto(card: CreditCard) {
+    const amount = parseFloat(gastoForm.amount)
+    if (!amount || amount <= 0) return
+    setLoading(true)
+    const existing = stmtByCard[card.id]
+    if (existing) {
+      await supabase.from('card_statements').update({
+        closing_balance: existing.closing_balance + amount,
+        status: existing.status === 'paid' ? 'partial' : existing.status,
+      }).eq('id', existing.id)
+    } else {
+      await supabase.from('card_statements').insert({
+        workspace_id: workspaceId,
+        card_id: card.id,
+        period: currentPeriod,
+        closing_balance: amount,
+        due_date: calcDueDate(currentPeriod, card.cut_day, card.payment_due_day),
+        status: 'pending',
+      })
+    }
+    setLoading(false)
+    setGastoCardId(null)
+    setGastoForm({ amount: '', description: '' })
+    router.refresh()
   }
 
   // ── EDIT CARD ─────────────────────────────────────────────────────
@@ -186,14 +252,17 @@ export default function CardsClient({ cards, banks, members, statements, install
     setDiferidoForm({
       description: '', total_amount: '', total_installments: '',
       monthly_amount: '', start_date: new Date().toISOString().slice(0, 7),
-      has_interest: false,
+      interest_rate_annual: '', has_interest: false,
     })
   }
 
-  function calcMonthly(total: string, count: string) {
-    const t = parseFloat(total), c = parseInt(count)
-    if (!isNaN(t) && !isNaN(c) && c > 0)
-      setDiferidoForm(f => ({ ...f, monthly_amount: (t / c).toFixed(2) }))
+  function recalcDiferido(total: string, count: string, rate: string) {
+    const t = parseFloat(total), c = parseInt(count), r = parseFloat(rate)
+    if (isNaN(t) || isNaN(c) || c <= 0) return
+    const monthly = (!isNaN(r) && r > 0)
+      ? calcAmortized(t, r, c)
+      : t / c
+    setDiferidoForm(f => ({ ...f, monthly_amount: monthly.toFixed(2) }))
   }
 
   async function handleDiferidoSave(card: CreditCard) {
@@ -201,7 +270,14 @@ export default function CardsClient({ cards, banks, members, statements, install
     setLoading(true)
     const total = parseFloat(diferidoForm.total_amount)
     const count = parseInt(diferidoForm.total_installments)
-    const monthly = diferidoForm.monthly_amount ? parseFloat(diferidoForm.monthly_amount) : total / count
+    const rate = parseFloat(diferidoForm.interest_rate_annual)
+    const monthly = diferidoForm.monthly_amount
+      ? parseFloat(diferidoForm.monthly_amount)
+      : (!isNaN(rate) && rate > 0 ? calcAmortized(total, rate, count) : total / count)
+    const totalInterest = diferidoForm.has_interest ? (monthly * count - total) : 0
+    const notes = diferidoForm.has_interest
+      ? `Con interés${!isNaN(rate) && rate > 0 ? ` ${rate}% anual` : ''} · Total a pagar: $${(monthly * count).toFixed(2)} · Intereses: $${totalInterest.toFixed(2)}`
+      : null
     await supabase.from('installments').insert({
       workspace_id: workspaceId,
       card_id: card.id,
@@ -213,7 +289,7 @@ export default function CardsClient({ cards, banks, members, statements, install
       remaining_balance: total,
       start_date: diferidoForm.start_date + '-01',
       status: 'active',
-      notes: diferidoForm.has_interest ? 'Con interés' : null,
+      notes,
     })
     setLoading(false)
     setDiferidoCardId(null)
@@ -246,20 +322,66 @@ export default function CardsClient({ cards, banks, members, statements, install
     <div style={{ maxWidth: 560, margin: '0 auto', padding: '20px 16px' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>Mis Tarjetas</h1>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
             {cards.length} tarjeta{cards.length !== 1 ? 's' : ''} · {currentPeriod}
           </p>
         </div>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          style={{ background: 'rgba(157,123,255,0.15)', border: '1px solid rgba(157,123,255,0.3)', color: '#9D7BFF', borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-        >
-          {showAddForm ? 'Cancelar' : '+ Nueva'}
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setShowBankManager(v => !v)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '8px 10px', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}>🏦</button>
+          <button onClick={() => setShowAddForm(!showAddForm)} style={{ background: 'rgba(157,123,255,0.15)', border: '1px solid rgba(157,123,255,0.3)', color: '#9D7BFF', borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            {showAddForm ? 'Cancelar' : '+ Nueva'}
+          </button>
+        </div>
       </div>
+
+      {/* ── BANK MANAGER ── */}
+      {showBankManager && (
+        <div className="glass fade-up" style={{ padding: 14, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>🏦 Gestionar bancos y miembros</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+            {banks.map(b => (
+              <div key={b.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {editBankId === b.id ? (
+                  <>
+                    <input className="input-glass" value={editBankName} onChange={e => setEditBankName(e.target.value)} style={{ flex: 1 }} />
+                    <button onClick={() => handleBankEditSave(b.id)} style={{ background: 'rgba(48,209,88,0.15)', border: '1px solid rgba(48,209,88,0.3)', borderRadius: 8, padding: '6px 10px', color: '#30D158', fontSize: 12, cursor: 'pointer' }}>✓</button>
+                    <button onClick={() => setEditBankId(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '6px 10px', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}>✕</button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ flex: 1, fontSize: 13 }}>{b.name}</span>
+                    <button onClick={() => { setEditBankId(b.id); setEditBankName(b.name) }} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '5px 9px', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer' }}>✏️</button>
+                    <button onClick={() => handleBankDelete(b.id)} style={{ background: 'rgba(255,69,58,0.1)', border: '1px solid rgba(255,69,58,0.2)', borderRadius: 8, padding: '5px 9px', color: '#FF453A', fontSize: 11, cursor: 'pointer' }}>🗑</button>
+                  </>
+                )}
+              </div>
+            ))}
+            <button onClick={() => { const n = prompt('Nombre del banco:'); if (n) addBank(n) }} style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.15)', borderRadius: 8, padding: '6px', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}>+ Agregar banco</button>
+          </div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '10px 0' }} />
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>MIEMBROS</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {members.map(m => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 13 }}>{m.name}</span>
+                <button onClick={() => handleDeleteMember(m.id)} style={{ background: 'rgba(255,69,58,0.1)', border: '1px solid rgba(255,69,58,0.2)', borderRadius: 8, padding: '5px 9px', color: '#FF453A', fontSize: 11, cursor: 'pointer' }}>🗑</button>
+              </div>
+            ))}
+            <button onClick={() => {
+              const n = prompt('Nombre del miembro:')
+              if (!n) return
+              const colors = ['#FF6B9D','#9D7BFF','#30D158','#0A84FF','#FFD60A','#FF9F0A']
+              addMember(n, colors[members.length % colors.length])
+            }} style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.15)', borderRadius: 8, padding: '6px', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}>+ Agregar miembro</button>
+          </div>
+        </div>
+      )}
 
       {/* ── ADD FORM ── */}
       {showAddForm && (
@@ -340,6 +462,7 @@ export default function CardsClient({ cards, banks, members, statements, install
             const isStatement  = statementCardId === card.id
             const isDiferido   = diferidoCardId === card.id
             const isHistory    = historyCardId === card.id
+            const isGasto      = gastoCardId === card.id
 
             const cardInst     = installments.filter(i => i.card_id === card.id)
             const instMonthly  = cardInst.reduce((s, i) => s + i.monthly_amount, 0)
@@ -490,8 +613,11 @@ export default function CardsClient({ cards, banks, members, statements, install
                 )}
 
                 {/* Action buttons */}
-                {!isEditing && !isStatement && !isDiferido && (
+                {!isEditing && !isStatement && !isDiferido && !isGasto && (
                   <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => { setGastoCardId(card.id); setGastoForm({ amount: '', description: '' }) }} style={{ background: 'rgba(48,209,88,0.12)', border: '1px solid rgba(48,209,88,0.25)', borderRadius: 8, padding: '8px 10px', color: '#30D158', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      💳 Gasto
+                    </button>
                     <button onClick={() => openStatement(card)} style={{ flex: 1, background: `${accent}15`, border: `1px solid ${accent}30`, borderRadius: 8, padding: '8px', color: accent, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                       {stmt ? '✏️ Estado' : '+ Estado'}
                     </button>
@@ -501,6 +627,37 @@ export default function CardsClient({ cards, banks, members, statements, install
                     <button onClick={() => openEdit(card)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer' }}>
                       ⚙️
                     </button>
+                  </div>
+                )}
+
+                {/* ── GASTO CORRIENTE PANEL ── */}
+                {isGasto && (
+                  <div style={{ marginTop: 4 }}>
+                    <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginBottom: 14 }} />
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#30D158', marginBottom: 12 }}>💳 Nuevo gasto corriente</p>
+                    {stmt && (
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                        Saldo actual: <strong style={{ color: accent }}>{fmtUSD(remaining)}</strong> → se sumará el nuevo gasto
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div>
+                        <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Monto del gasto *</label>
+                        <input className="input-glass" type="number" placeholder="Ej: 150" value={gastoForm.amount} onChange={e => setGastoForm(f => ({ ...f, amount: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Descripción (opcional)</label>
+                        <input className="input-glass" placeholder="Ej: Supermercado, gasolina…" value={gastoForm.description} onChange={e => setGastoForm(f => ({ ...f, description: e.target.value }))} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => handleNewGasto(card)} disabled={loading || !gastoForm.amount} style={{ flex: 1, background: 'rgba(48,209,88,0.2)', border: '1px solid rgba(48,209,88,0.4)', borderRadius: 8, padding: 10, color: '#30D158', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: loading || !gastoForm.amount ? 0.5 : 1 }}>
+                          {loading ? 'Guardando...' : '+ Agregar al saldo'}
+                        </button>
+                        <button onClick={() => setGastoCardId(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 14px', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer' }}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -603,44 +760,69 @@ export default function CardsClient({ cards, banks, members, statements, install
                 )}
 
                 {/* ── DIFERIDO PANEL ── */}
-                {isDiferido && (
+                {isDiferido && (() => {
+                  const df = diferidoForm
+                  const t = parseFloat(df.total_amount), c = parseInt(df.total_installments), r = parseFloat(df.interest_rate_annual)
+                  const m = parseFloat(df.monthly_amount)
+                  const totalCost = !isNaN(m) && !isNaN(c) ? m * c : 0
+                  const totalInterest = !isNaN(t) && totalCost > 0 ? totalCost - t : 0
+                  return (
                   <div style={{ marginTop: 4 }}>
                     <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', marginBottom: 14 }} />
                     <p style={{ fontSize: 12, fontWeight: 700, color: '#9D7BFF', marginBottom: 12 }}>📦 Registrar diferido</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <input className="input-glass" placeholder="Descripción (ej: iPhone, televisor…)" value={diferidoForm.description} onChange={e => setDiferidoForm(f => ({ ...f, description: e.target.value }))} />
+                      <input className="input-glass" placeholder="Descripción (ej: iPhone, televisor…)" value={df.description} onChange={e => setDiferidoForm(f => ({ ...f, description: e.target.value }))} />
                       <div style={{ display: 'flex', gap: 10 }}>
                         <div style={{ flex: 1 }}>
                           <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Monto total *</label>
-                          <input className="input-glass" type="number" placeholder="800" value={diferidoForm.total_amount} onChange={e => { setDiferidoForm(f => ({ ...f, total_amount: e.target.value })); calcMonthly(e.target.value, diferidoForm.total_installments) }} />
+                          <input className="input-glass" type="number" placeholder="800" value={df.total_amount} onChange={e => { setDiferidoForm(f => ({ ...f, total_amount: e.target.value })); recalcDiferido(e.target.value, df.total_installments, df.interest_rate_annual) }} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Nº de cuotas *</label>
-                          <input className="input-glass" type="number" placeholder="12" min={1} value={diferidoForm.total_installments} onChange={e => { setDiferidoForm(f => ({ ...f, total_installments: e.target.value })); calcMonthly(diferidoForm.total_amount, e.target.value) }} />
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 10 }}>
-                        <div style={{ flex: 1 }}>
-                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Cuota mensual</label>
-                          <input className="input-glass" type="number" placeholder="Auto-calculado" value={diferidoForm.monthly_amount} onChange={e => setDiferidoForm(f => ({ ...f, monthly_amount: e.target.value }))} style={{ color: diferidoForm.monthly_amount ? '#9D7BFF' : undefined }} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Mes de inicio</label>
-                          <input className="input-glass" type="month" value={diferidoForm.start_date} onChange={e => setDiferidoForm(f => ({ ...f, start_date: e.target.value }))} />
+                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Nº cuotas *</label>
+                          <input className="input-glass" type="number" placeholder="12" min={1} value={df.total_installments} onChange={e => { setDiferidoForm(f => ({ ...f, total_installments: e.target.value })); recalcDiferido(df.total_amount, e.target.value, df.interest_rate_annual) }} />
                         </div>
                       </div>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--text-secondary)' }}>
-                        <input type="checkbox" checked={diferidoForm.has_interest} onChange={e => setDiferidoForm(f => ({ ...f, has_interest: e.target.checked }))} style={{ accentColor: '#9D7BFF', width: 14, height: 14 }} />
-                        Tiene interés (diferido con costo)
+                        <input type="checkbox" checked={df.has_interest} onChange={e => setDiferidoForm(f => ({ ...f, has_interest: e.target.checked }))} style={{ accentColor: '#9D7BFF', width: 14, height: 14 }} />
+                        Tiene interés
                       </label>
-                      {diferidoForm.monthly_amount && diferidoForm.total_installments && (
-                        <div style={{ background: 'rgba(157,123,255,0.08)', border: '1px solid rgba(157,123,255,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
-                          <strong style={{ color: '#9D7BFF' }}>{fmtUSD(parseFloat(diferidoForm.monthly_amount || '0'))}/mes</strong>
-                          <span style={{ color: 'var(--text-muted)' }}> × {diferidoForm.total_installments} cuotas</span>
+                      {df.has_interest && (
+                        <div>
+                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Tasa anual % (ej: 18)</label>
+                          <input className="input-glass" type="number" placeholder="0 = sin interés adicional" value={df.interest_rate_annual} onChange={e => { setDiferidoForm(f => ({ ...f, interest_rate_annual: e.target.value })); recalcDiferido(df.total_amount, df.total_installments, e.target.value) }} />
+                          <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>Calcula cuota automáticamente con fórmula de amortización</p>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <div style={{ flex: 1 }}>
+                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Cuota mensual</label>
+                          <input className="input-glass" type="number" placeholder="Auto-calculado" value={df.monthly_amount} onChange={e => setDiferidoForm(f => ({ ...f, monthly_amount: e.target.value }))} style={{ color: df.monthly_amount ? '#9D7BFF' : undefined }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label className="label-xs" style={{ display: 'block', marginBottom: 4 }}>Mes de inicio</label>
+                          <input className="input-glass" type="month" value={df.start_date} onChange={e => setDiferidoForm(f => ({ ...f, start_date: e.target.value }))} />
+                        </div>
+                      </div>
+                      {df.monthly_amount && df.total_installments && (
+                        <div style={{ background: 'rgba(157,123,255,0.08)', border: '1px solid rgba(157,123,255,0.2)', borderRadius: 8, padding: '10px 12px', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>Cuota mensual</span>
+                            <strong style={{ color: '#9D7BFF' }}>{fmtUSD(m)}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>Total a pagar ({c} cuotas)</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>{fmtUSD(totalCost)}</strong>
+                          </div>
+                          {totalInterest > 0.5 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                              <span style={{ color: '#FF9F0A' }}>Intereses</span>
+                              <strong style={{ color: '#FF9F0A' }}>+{fmtUSD(totalInterest)}</strong>
+                            </div>
+                          )}
                         </div>
                       )}
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => handleDiferidoSave(card)} disabled={loading || !diferidoForm.total_amount || !diferidoForm.total_installments} style={{ flex: 1, background: 'rgba(157,123,255,0.2)', border: '1px solid rgba(157,123,255,0.4)', borderRadius: 8, padding: 10, color: '#9D7BFF', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: loading || !diferidoForm.total_amount || !diferidoForm.total_installments ? 0.5 : 1 }}>
+                        <button onClick={() => handleDiferidoSave(card)} disabled={loading || !df.total_amount || !df.total_installments} style={{ flex: 1, background: 'rgba(157,123,255,0.2)', border: '1px solid rgba(157,123,255,0.4)', borderRadius: 8, padding: 10, color: '#9D7BFF', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: loading || !df.total_amount || !df.total_installments ? 0.5 : 1 }}>
                           {loading ? 'Guardando...' : 'Registrar diferido'}
                         </button>
                         <button onClick={() => setDiferidoCardId(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 14px', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer' }}>
@@ -649,7 +831,8 @@ export default function CardsClient({ cards, banks, members, statements, install
                       </div>
                     </div>
                   </div>
-                )}
+                  )
+                })()}
 
               </div>
             )
