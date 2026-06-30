@@ -197,7 +197,7 @@ export default function SmartAdvisor({ cards, statements, installments }: Props)
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {cards.map(card => {
                 const stmt = statements.find(s => s.card_id === card.id)
-                const used = stmt?.closing_balance ?? 0
+                const used = (stmt && stmt.status !== 'paid') ? stmt.closing_balance : 0
                 const pct = card.credit_limit > 0 ? Math.round((used / card.credit_limit) * 100) : 0
                 const color = utilizationColor(pct)
                 const dot = pct < 30 ? '🟢' : pct < 70 ? '🟡' : '🔴'

@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PersonalDashboard from './PersonalDashboard'
+
+export const dynamic = 'force-dynamic'
 import type { CreditCard, CardStatement, Installment, Obligation, ObligationPeriod, DueItem, PersonalMember } from '@/types/database'
 
 function currentPeriod() {
@@ -71,9 +73,9 @@ export default async function PersonalPage() {
   const periods = (periodsRes.data ?? []) as ObligationPeriod[]
   const members = (membersRes.data ?? []) as PersonalMember[]
 
-  // Estadísticas
+  // Estadísticas — solo saldos no pagados cuentan como deuda activa
   const totalLimit = cards.reduce((s, c) => s + c.credit_limit, 0)
-  const totalUsed = statements.reduce((s, st) => s + st.closing_balance, 0)
+  const totalUsed = statements.filter(st => st.status !== 'paid').reduce((s, st) => s + st.closing_balance, 0)
   const totalAvailable = totalLimit - totalUsed
 
   // Due items para semáforo

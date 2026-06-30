@@ -307,7 +307,7 @@ export default function CardsClient({ cards, banks, members, statements, install
           {cards.map((card) => {
             const accent = card.accent_color ?? '#FFD60A'
             const stmt = stmtByCard[card.id]
-            const usedPct = stmt ? Math.min(100, (stmt.closing_balance / card.credit_limit) * 100) : 0
+            const usedPct = (stmt && stmt.status !== 'paid') ? Math.min(100, (stmt.closing_balance / card.credit_limit) * 100) : 0
             const isEditing = editCardId === card.id
             const isStatement = statementCardId === card.id
             const isDiferido = diferidoCardId === card.id

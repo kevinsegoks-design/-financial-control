@@ -52,7 +52,7 @@ export default function PersonalDashboard({ cards, statements, installments, obl
 
   // ── Recompute stats from filtered data ─────────────────────────
   const totalLimit = filteredCards.reduce((s, c) => s + c.credit_limit, 0)
-  const totalUsed  = filteredStatements.reduce((s, st) => s + st.closing_balance, 0)
+  const totalUsed  = filteredStatements.filter(st => st.status !== 'paid').reduce((s, st) => s + st.closing_balance, 0)
   const totalAvailable = totalLimit - totalUsed
 
   // ── DueItems for filtered data ─────────────────────────────────

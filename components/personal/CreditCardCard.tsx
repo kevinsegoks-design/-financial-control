@@ -31,7 +31,7 @@ function Chip() {
 }
 
 export default function CreditCardCard({ card, statement, floatClass = 'float-1', fadeClass = 'fade-up' }: Props) {
-  const used = statement?.closing_balance ?? 0
+  const used = (statement && statement.status !== 'paid') ? statement.closing_balance : 0
   const available = card.credit_limit - used
   const pctFree = card.credit_limit > 0 ? Math.round((available / card.credit_limit) * 100) : 100
   const accent = card.accent_color ?? '#9D7BFF'
