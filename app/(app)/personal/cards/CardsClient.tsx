@@ -680,6 +680,7 @@ export default function CardsClient({ cards, banks, members, statements, install
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                         <span style={{ fontSize: 11, color: accent, fontWeight: 700 }}>
                           {card?.nickname ?? card?.bank?.name ?? 'Tarjeta'}
+                          {card?.last_four && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}> ••{card.last_four}</span>}
                         </span>
                         {hasInterest && (
                           <span style={{ fontSize: 9, background: 'rgba(255,159,10,0.15)', border: '1px solid rgba(255,159,10,0.3)', color: '#FF9F0A', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>
