@@ -16,6 +16,7 @@ interface Props {
   periods: ObligationPeriod[]
   dueItems: DueItem[]
   members: PersonalMember[]
+  workspaceId: string
   stats: {
     totalLimit: number
     totalUsed: number
@@ -26,7 +27,7 @@ interface Props {
 const FLOAT_CLASSES = ['float-1', 'float-2', 'float-3', 'float-4', 'float-5']
 const FADE_CLASSES  = ['fade-up', 'fade-up-d1', 'fade-up-d2', 'fade-up-d3', 'fade-up-d4']
 
-export default function PersonalDashboard({ cards, statements, installments, obligations, periods, dueItems, members, stats }: Props) {
+export default function PersonalDashboard({ cards, statements, installments, obligations, periods, dueItems, members, workspaceId, stats }: Props) {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
 
   // ── Filter by member ────────────────────────────────────────────
@@ -200,7 +201,7 @@ export default function PersonalDashboard({ cards, statements, installments, obl
             🚦 Pagos
           </h2>
         </div>
-        <PaymentAlerts items={filteredDueItems} />
+        <PaymentAlerts items={filteredDueItems} workspaceId={workspaceId} />
       </section>
 
       {/* Diferidos */}

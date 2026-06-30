@@ -8,6 +8,7 @@ import { fmtUSDCompact } from '@/lib/format'
 
 interface Props {
   items: DueItem[]
+  workspaceId: string
 }
 
 function daysUntil(dateStr: string) {
@@ -40,7 +41,7 @@ const STATUS_EXPLAIN: Record<string, string> = {
   overdue:  'Pasó la fecha límite sin pagar',
 }
 
-export default function PaymentAlerts({ items }: Props) {
+export default function PaymentAlerts({ items, workspaceId }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [paying, setPaying] = useState<Set<string>>(new Set())
@@ -57,10 +58,29 @@ export default function PaymentAlerts({ items }: Props) {
 
   async function markPaid(item: DueItem) {
     setPaying(prev => new Set(prev).add(item.id))
+    const today = new Date().toISOString().split('T')[0]
     if (item.type === 'card_statement') {
-      await supabase.from('card_statements').update({ status: 'paid' }).eq('id', item.id)
+      await Promise.all([
+        supabase.from('card_statements').update({ status: 'paid' }).eq('id', item.id),
+        supabase.from('personal_payments').insert({
+          workspace_id: workspaceId,
+          card_statement_id: item.id,
+          amount: item.amount,
+          payment_date: today,
+          payment_method: 'transferencia',
+        }),
+      ])
     } else {
-      await supabase.from('obligation_periods').update({ status: 'paid', amount_paid: item.amount }).eq('id', item.id)
+      await Promise.all([
+        supabase.from('obligation_periods').update({ status: 'paid', amount_paid: item.amount }).eq('id', item.id),
+        supabase.from('personal_payments').insert({
+          workspace_id: workspaceId,
+          obligation_period_id: item.id,
+          amount: item.amount,
+          payment_date: today,
+          payment_method: 'transferencia',
+        }),
+      ])
     }
     setPaid(prev => new Set(prev).add(item.id))
     setPaying(prev => { const s = new Set(prev); s.delete(item.id); return s })

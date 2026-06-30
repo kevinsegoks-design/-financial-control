@@ -120,6 +120,7 @@ export default async function PersonalPage() {
       periods={periods}
       dueItems={dueItems}
       members={members}
+      workspaceId={ws.id}
       stats={{ totalLimit, totalUsed, totalAvailable }}
     />
   )

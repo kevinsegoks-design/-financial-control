@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PaymentsClient from './PaymentsClient'
 
+export const dynamic = 'force-dynamic'
+
 function currentPeriod() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -18,9 +20,34 @@ export default async function PaymentsPage() {
   const period = currentPeriod()
 
   const [statementsRes, periodsRes, paymentsRes] = await Promise.all([
-    supabase.from('card_statements').select('*, credit_card:credit_cards(nickname,last_four,accent_color,bank:banks(name))').eq('workspace_id', ws.id).eq('period', period).neq('status', 'paid'),
-    supabase.from('obligation_periods').select('*, obligation:obligations(name,category)').eq('workspace_id', ws.id).eq('period', period).neq('status', 'paid').neq('status', 'waived'),
-    supabase.from('personal_payments').select('*').eq('workspace_id', ws.id).order('payment_date', { ascending: false }).limit(20),
+    supabase
+      .from('card_statements')
+      .select('*, credit_card:credit_cards(nickname, last_four, accent_color, interest_rate, bank:banks(name))')
+      .eq('workspace_id', ws.id)
+      .eq('period', period)
+      .neq('status', 'paid'),
+    supabase
+      .from('obligation_periods')
+      .select('*, obligation:obligations(name, category)')
+      .eq('workspace_id', ws.id)
+      .eq('period', period)
+      .neq('status', 'paid')
+      .neq('status', 'waived'),
+    supabase
+      .from('personal_payments')
+      .select(`
+        *,
+        card_statement:card_statements(
+          period, closing_balance,
+          credit_card:credit_cards(nickname, last_four, accent_color, bank:banks(name))
+        ),
+        obligation_period:obligation_periods(
+          obligation:obligations(name, category)
+        )
+      `)
+      .eq('workspace_id', ws.id)
+      .order('payment_date', { ascending: false })
+      .limit(30),
   ])
 
   return (
