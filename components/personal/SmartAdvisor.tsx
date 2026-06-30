@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { CreditCard, CardStatement, Installment } from '@/types/database'
 import { analyzeCard, computeHealthScore, getMonthlyCommitment } from '@/lib/financeAnalysis'
 import { fmtUSDCompact, fmtUSD } from '@/lib/format'
@@ -53,16 +53,24 @@ export default function SmartAdvisor({ cards, statements, installments }: Props)
 
   if (cards.length === 0) return null
 
-  const timings = cards.map(c => analyzeCard(c, statements.find(s => s.card_id === c.id), installments))
-  const score = computeHealthScore(timings, statements)
-  const { diferidos, corriente, total } = getMonthlyCommitment(statements, installments)
-  const health = healthLabel(score)
-
-  const sorted = [...timings].sort((a, b) => b.daysUntilCut - a.daysUntilCut)
+  const timings = useMemo(
+    () => cards.map(c => analyzeCard(c, statements.find(s => s.card_id === c.id), installments)),
+    [cards, statements, installments]
+  )
+  const score = useMemo(() => computeHealthScore(timings, statements), [timings, statements])
+  const { diferidos, corriente, total } = useMemo(
+    () => getMonthlyCommitment(statements, installments),
+    [statements, installments]
+  )
+  const health = useMemo(() => healthLabel(score), [score])
+  const sorted = useMemo(() => [...timings].sort((a, b) => b.daysUntilCut - a.daysUntilCut), [timings])
   const best = sorted[0]
-  const toAvoid = timings.filter(t => t.recommendation === 'avoid' || t.recommendation === 'caution')
-  const projection = getProjection(installments, statements)
-  const maxProjection = Math.max(...projection.map(p => p.total), 1)
+  const toAvoid = useMemo(
+    () => timings.filter(t => t.recommendation === 'avoid' || t.recommendation === 'caution'),
+    [timings]
+  )
+  const projection = useMemo(() => getProjection(installments, statements), [installments, statements])
+  const maxProjection = useMemo(() => Math.max(...projection.map(p => p.total), 1), [projection])
 
   return (
     <div className="glass" style={{ overflow: 'hidden', borderColor: 'rgba(157,123,255,0.15)' }}>

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { CreditCard, Bank, PersonalMember, CardStatement, StatementStatus, Installment, PersonalPayment } from '@/types/database'
 import ProgressRing from '@/components/ui/ProgressRing'
+import { fmtUSD } from '@/lib/format'
 
 interface Props {
   cards: CreditCard[]
@@ -65,18 +66,23 @@ export default function CardsClient({ cards, banks, members, statements, install
     has_interest: false,
   })
 
-  const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n)
   const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short' })
 
-  const stmtByCard = Object.fromEntries(statements.map(s => [s.card_id, s]))
+  const stmtByCard = useMemo(
+    () => Object.fromEntries(statements.map(s => [s.card_id, s])),
+    [statements]
+  )
 
-  const paymentsByStmt = payments.reduce((acc, p) => {
-    if (p.card_statement_id) {
-      if (!acc[p.card_statement_id]) acc[p.card_statement_id] = []
-      acc[p.card_statement_id].push(p)
-    }
-    return acc
-  }, {} as Record<string, PersonalPayment[]>)
+  const paymentsByStmt = useMemo(
+    () => payments.reduce((acc, p) => {
+      if (p.card_statement_id) {
+        if (!acc[p.card_statement_id]) acc[p.card_statement_id] = []
+        acc[p.card_statement_id].push(p)
+      }
+      return acc
+    }, {} as Record<string, PersonalPayment[]>),
+    [payments]
+  )
 
   // ── ADD CARD ──────────────────────────────────────────────────────
   async function handleAddCard() {
@@ -352,7 +358,7 @@ export default function CardsClient({ cards, banks, members, statements, install
                     </div>
                     <p style={{ fontSize: 16, fontWeight: 700 }}>{card.nickname ?? `Tarjeta ${card.bank?.name ?? ''}`}</p>
                     <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Límite: <span style={{ color: 'var(--text-secondary)' }}>{fmt(card.credit_limit)}</span></span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Límite: <span style={{ color: 'var(--text-secondary)' }}>{fmtUSD(card.credit_limit)}</span></span>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Corte: <span style={{ color: 'var(--text-secondary)' }}>día {card.cut_day}</span></span>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Pago: <span style={{ color: 'var(--text-secondary)' }}>día {card.payment_due_day}</span></span>
                     </div>
@@ -383,26 +389,26 @@ export default function CardsClient({ cards, banks, members, statements, install
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
                           <span>Saldo original</span>
-                          <span>{fmt(originalBal)}</span>
+                          <span>{fmtUSD(originalBal)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#30D158' }}>
                           <span>Pagado</span>
-                          <span>−{fmt(totalPaid)}</span>
+                          <span>−{fmtUSD(totalPaid)}</span>
                         </div>
                         <div style={{ height: 1, background: `${accent}30`, margin: '4px 0' }} />
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>Pendiente</span>
-                          <span style={{ fontSize: 22, fontWeight: 900, color: stmt.status === 'paid' ? '#30D158' : accent }}>{fmt(remaining)}</span>
+                          <span style={{ fontSize: 22, fontWeight: 900, color: stmt.status === 'paid' ? '#30D158' : accent }}>{fmtUSD(remaining)}</span>
                         </div>
                         {stmt.minimum_payment && (
-                          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Pago mínimo: {fmt(stmt.minimum_payment)}</p>
+                          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Pago mínimo: {fmtUSD(stmt.minimum_payment)}</p>
                         )}
                       </div>
                     ) : (
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <p style={{ fontSize: 22, fontWeight: 900, color: stmt.status === 'paid' ? '#30D158' : accent }}>{fmt(remaining)}</p>
-                          {stmt.minimum_payment && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Pago mínimo: {fmt(stmt.minimum_payment)}</p>}
+                          <p style={{ fontSize: 22, fontWeight: 900, color: stmt.status === 'paid' ? '#30D158' : accent }}>{fmtUSD(remaining)}</p>
+                          {stmt.minimum_payment && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Pago mínimo: {fmtUSD(stmt.minimum_payment)}</p>}
                         </div>
                       </div>
                     )}
@@ -412,8 +418,8 @@ export default function CardsClient({ cards, banks, members, statements, install
                       <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(255,69,58,0.07)', border: '1px solid rgba(255,69,58,0.18)', borderRadius: 6 }}>
                         <p style={{ fontSize: 11, color: '#FF9F0A' }}>
                           {interestOnMin
-                            ? `⚠️ Si pagas solo el mínimo: +${fmt(interestOnMin)} en intereses el próximo mes`
-                            : `💡 Sin pago: +${fmt(monthlyInterest)} en intereses este mes (${interestRate}% anual)`}
+                            ? `⚠️ Si pagas solo el mínimo: +${fmtUSD(interestOnMin)} en intereses el próximo mes`
+                            : `💡 Sin pago: +${fmtUSD(monthlyInterest)} en intereses este mes (${interestRate}% anual)`}
                         </p>
                       </div>
                     )}
@@ -449,7 +455,7 @@ export default function CardsClient({ cards, banks, members, statements, install
                         background: 'rgba(255,255,255,0.02)',
                       }}>
                         <div>
-                          <p style={{ fontSize: 13, fontWeight: 700, color: '#30D158' }}>+{fmt(pay.amount)}</p>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: '#30D158' }}>+{fmtUSD(pay.amount)}</p>
                           <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
                             {new Date(pay.payment_date + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: '2-digit' })}
                             {pay.payment_method ? ` · ${pay.payment_method}` : ''}
@@ -478,7 +484,7 @@ export default function CardsClient({ cards, banks, members, statements, install
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: 10, color: 'var(--text-muted)', display: 'block', marginBottom: 1 }}>Cuota mensual</span>
-                      <span style={{ fontSize: 15, fontWeight: 800, color: '#9D7BFF' }}>{fmt(instMonthly)}</span>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: '#9D7BFF' }}>{fmtUSD(instMonthly)}</span>
                     </div>
                   </div>
                 )}
@@ -552,7 +558,7 @@ export default function CardsClient({ cards, banks, members, statements, install
                     {stmt && totalPaid > 0 && (
                       <div style={{ background: 'rgba(255,159,10,0.08)', border: '1px solid rgba(255,159,10,0.2)', borderRadius: 8, padding: '7px 10px', marginBottom: 12 }}>
                         <p style={{ fontSize: 11, color: '#FF9F0A' }}>
-                          ⚠️ Esta tarjeta tiene {stmtPays.length} pago{stmtPays.length > 1 ? 's' : ''} registrado{stmtPays.length > 1 ? 's' : ''} ({fmt(totalPaid)} pagado). Al guardar se borran y se reinicia el saldo.
+                          ⚠️ Esta tarjeta tiene {stmtPays.length} pago{stmtPays.length > 1 ? 's' : ''} registrado{stmtPays.length > 1 ? 's' : ''} ({fmtUSD(totalPaid)} pagado). Al guardar se borran y se reinicia el saldo.
                         </p>
                       </div>
                     )}
@@ -629,7 +635,7 @@ export default function CardsClient({ cards, banks, members, statements, install
                       </label>
                       {diferidoForm.monthly_amount && diferidoForm.total_installments && (
                         <div style={{ background: 'rgba(157,123,255,0.08)', border: '1px solid rgba(157,123,255,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
-                          <strong style={{ color: '#9D7BFF' }}>{fmt(parseFloat(diferidoForm.monthly_amount || '0'))}/mes</strong>
+                          <strong style={{ color: '#9D7BFF' }}>{fmtUSD(parseFloat(diferidoForm.monthly_amount || '0'))}/mes</strong>
                           <span style={{ color: 'var(--text-muted)' }}> × {diferidoForm.total_installments} cuotas</span>
                         </div>
                       )}
@@ -657,7 +663,7 @@ export default function CardsClient({ cards, banks, members, statements, install
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <h2 style={{ fontSize: 15, fontWeight: 800 }}>📦 Diferidos activos</h2>
             <span style={{ fontSize: 11, color: '#9D7BFF', fontWeight: 700 }}>
-              {installments.length} compra{installments.length !== 1 ? 's' : ''} · {fmt(installments.reduce((s, i) => s + i.monthly_amount, 0))}/mes
+              {installments.length} compra{installments.length !== 1 ? 's' : ''} · {fmtUSD(installments.reduce((s, i) => s + i.monthly_amount, 0))}/mes
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -686,8 +692,8 @@ export default function CardsClient({ cards, banks, members, statements, install
                       </p>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-                      <p style={{ fontSize: 16, fontWeight: 800, color: '#9D7BFF' }}>{fmt(inst.monthly_amount)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)' }}>/mes</span></p>
-                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Resta: <strong style={{ color: 'var(--text-secondary)' }}>{fmt(inst.remaining_balance)}</strong></p>
+                      <p style={{ fontSize: 16, fontWeight: 800, color: '#9D7BFF' }}>{fmtUSD(inst.monthly_amount)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)' }}>/mes</span></p>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Resta: <strong style={{ color: 'var(--text-secondary)' }}>{fmtUSD(inst.remaining_balance)}</strong></p>
                     </div>
                   </div>
                   <div style={{ marginBottom: 10 }}>

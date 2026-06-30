@@ -61,7 +61,7 @@ export default async function PersonalPage() {
       .eq('period', period),
     supabase
       .from('personal_members')
-      .select('*')
+      .select('id,name,color')
       .eq('workspace_id', ws.id)
       .order('name'),
   ])

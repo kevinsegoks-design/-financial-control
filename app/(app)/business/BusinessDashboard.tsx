@@ -2,15 +2,15 @@
 
 import CountUp from '@/components/ui/CountUp'
 import Link from 'next/link'
+import { fmtUSD } from '@/lib/format'
+import type { Supplier, SupplierInvoice } from '@/types/database'
 
 interface Props {
-  suppliers: any[]
-  invoices: any[]
+  suppliers: Supplier[]
+  invoices: SupplierInvoice[]
   totalPending: number
   overdueCount: number
 }
-
-const fmtMXN = (n: number) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 })
 
 function daysUntil(date: string) {
   return Math.ceil((new Date(date).getTime() - Date.now()) / 86_400_000)
@@ -97,7 +97,7 @@ export default function BusinessDashboard({ suppliers, invoices, totalPending, o
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 10 }}>
                       <p style={{ fontSize: 14, fontWeight: 800, color }}>
-                        {fmtMXN(inv.pending_balance)}
+                        {fmtUSD(inv.pending_balance)}
                       </p>
                       <p style={{ fontSize: 10, color, marginTop: 2 }}>
                         {d < 0 ? `hace ${Math.abs(d)}d` : d === 0 ? 'Hoy' : `en ${d}d`}

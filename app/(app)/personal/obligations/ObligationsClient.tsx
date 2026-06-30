@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { fmtUSD } from '@/lib/format'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { Obligation, PersonalMember } from '@/types/database'
@@ -12,7 +13,6 @@ interface Props {
 }
 
 const CATEGORIES = ['Vivienda', 'Servicios', 'Transporte', 'Salud', 'Educación', 'Entretenimiento', 'Alimentación', 'Seguros', 'Comunicación', 'Otros']
-const fmtMXN = (n: number) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 })
 
 export default function ObligationsClient({ obligations, members, workspaceId }: Props) {
   const router = useRouter()
@@ -25,7 +25,10 @@ export default function ObligationsClient({ obligations, members, workspaceId }:
     personal_member_id: '',
   })
 
-  const totalMonthly = obligations.filter(o => o.status === 'active' && o.frequency === 'monthly').reduce((s, o) => s + o.amount, 0)
+  const totalMonthly = useMemo(
+    () => obligations.filter(o => o.status === 'active' && o.frequency === 'monthly').reduce((s, o) => s + o.amount, 0),
+    [obligations]
+  )
 
   async function handleSave() {
     if (!form.name || !form.amount) return
@@ -44,11 +47,14 @@ export default function ObligationsClient({ obligations, members, workspaceId }:
     if (!error) { setShowForm(false); router.refresh() }
   }
 
-  const byCategory = obligations.reduce((acc, o) => {
-    if (!acc[o.category]) acc[o.category] = []
-    acc[o.category].push(o)
-    return acc
-  }, {} as Record<string, Obligation[]>)
+  const byCategory = useMemo(
+    () => obligations.reduce((acc, o) => {
+      if (!acc[o.category]) acc[o.category] = []
+      acc[o.category].push(o)
+      return acc
+    }, {} as Record<string, Obligation[]>),
+    [obligations]
+  )
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto', padding: '20px 16px' }}>
@@ -56,7 +62,7 @@ export default function ObligationsClient({ obligations, members, workspaceId }:
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>Gastos Fijos</h1>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-            Total mensual: <span style={{ color: '#FF6B9D', fontWeight: 700 }}>{fmtMXN(totalMonthly)}</span>
+            Total mensual: <span style={{ color: '#FF6B9D', fontWeight: 700 }}>{fmtUSD(totalMonthly)}</span>
           </p>
         </div>
         <button
@@ -145,7 +151,7 @@ export default function ObligationsClient({ obligations, members, workspaceId }:
                     </p>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontSize: 14, fontWeight: 700, color: '#FF6B9D' }}>{fmtMXN(obl.amount)}</p>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: '#FF6B9D' }}>{fmtUSD(obl.amount)}</p>
                     {obl.is_variable && <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>variable</p>}
                   </div>
                 </div>

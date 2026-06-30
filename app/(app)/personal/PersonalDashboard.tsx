@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import HeroMetric from '@/components/personal/HeroMetric'
 import CreditCardCard from '@/components/personal/CreditCardCard'
 import PaymentAlerts from '@/components/personal/PaymentAlerts'
@@ -30,34 +30,38 @@ const FADE_CLASSES  = ['fade-up', 'fade-up-d1', 'fade-up-d2', 'fade-up-d3', 'fad
 export default function PersonalDashboard({ cards, statements, installments, obligations, periods, dueItems, members, workspaceId, stats }: Props) {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
 
-  // ── Filter by member ────────────────────────────────────────────
-  const filteredCards = selectedMemberId
-    ? cards.filter(c => c.personal_member_id === selectedMemberId)
-    : cards
-
-  const filteredStatements = statements.filter(s =>
-    filteredCards.some(c => c.id === s.card_id)
+  const filteredCards = useMemo(
+    () => selectedMemberId ? cards.filter(c => c.personal_member_id === selectedMemberId) : cards,
+    [selectedMemberId, cards]
   )
 
-  const filteredInstallments = installments.filter(i =>
-    filteredCards.some(c => c.id === i.card_id)
+  const filteredStatements = useMemo(
+    () => statements.filter(s => filteredCards.some(c => c.id === s.card_id)),
+    [statements, filteredCards]
   )
 
-  const filteredObligations = selectedMemberId
-    ? obligations.filter(o => !o.personal_member_id || o.personal_member_id === selectedMemberId)
-    : obligations
-
-  const filteredPeriods = periods.filter(p =>
-    filteredObligations.some(o => o.id === p.obligation_id)
+  const filteredInstallments = useMemo(
+    () => installments.filter(i => filteredCards.some(c => c.id === i.card_id)),
+    [installments, filteredCards]
   )
 
-  // ── Recompute stats from filtered data ─────────────────────────
-  const totalLimit = filteredCards.reduce((s, c) => s + c.credit_limit, 0)
-  const totalUsed  = filteredStatements.filter(st => st.status !== 'paid').reduce((s, st) => s + st.closing_balance, 0)
-  const totalAvailable = totalLimit - totalUsed
+  const filteredObligations = useMemo(
+    () => selectedMemberId ? obligations.filter(o => !o.personal_member_id || o.personal_member_id === selectedMemberId) : obligations,
+    [selectedMemberId, obligations]
+  )
 
-  // ── DueItems for filtered data ─────────────────────────────────
-  const filteredDueItems: DueItem[] = [
+  const filteredPeriods = useMemo(
+    () => periods.filter(p => filteredObligations.some(o => o.id === p.obligation_id)),
+    [periods, filteredObligations]
+  )
+
+  const { totalLimit, totalUsed, totalAvailable } = useMemo(() => {
+    const limit = filteredCards.reduce((s, c) => s + c.credit_limit, 0)
+    const used  = filteredStatements.filter(st => st.status !== 'paid').reduce((s, st) => s + st.closing_balance, 0)
+    return { totalLimit: limit, totalUsed: used, totalAvailable: limit - used }
+  }, [filteredCards, filteredStatements])
+
+  const filteredDueItems = useMemo((): DueItem[] => [
     ...filteredStatements
       .filter(st => st.status !== 'paid')
       .map(st => {
@@ -87,15 +91,12 @@ export default function PersonalDashboard({ cards, statements, installments, obl
           status: p.status,
         }
       }),
-  ]
+  ], [filteredStatements, filteredPeriods, filteredCards, filteredObligations])
 
-  const overdue = filteredDueItems.filter(i => {
-    if (i.status === 'overdue') return true
-    const d = Math.ceil((new Date(i.due_date).getTime() - Date.now()) / 86_400_000)
-    return d < 0
-  })
-
-  const selectedMember = members.find(m => m.id === selectedMemberId)
+  const selectedMember = useMemo(
+    () => members.find(m => m.id === selectedMemberId),
+    [members, selectedMemberId]
+  )
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto', padding: '16px 16px 0', display: 'flex', flexDirection: 'column', gap: 18 }}>
