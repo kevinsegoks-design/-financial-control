@@ -211,7 +211,7 @@ export default function PersonalDashboard({ cards, statements, installments, obl
               📦 Diferidos activos
             </h2>
           </div>
-          <InstallmentsWidget installments={filteredInstallments} />
+          <InstallmentsWidget installments={filteredInstallments} cards={filteredCards} />
         </section>
       )}
     </div>

@@ -1,13 +1,14 @@
 'use client'
 
-import type { Installment } from '@/types/database'
+import type { Installment, CreditCard } from '@/types/database'
 import CountUp from '@/components/ui/CountUp'
 
 interface Props {
   installments: Installment[]
+  cards?: CreditCard[]
 }
 
-export default function InstallmentsWidget({ installments }: Props) {
+export default function InstallmentsWidget({ installments, cards = [] }: Props) {
   const active = installments.filter(i => i.status === 'active')
   const totalBalance = active.reduce((s, i) => s + i.remaining_balance, 0)
   const totalMonthly = active.reduce((s, i) => s + i.monthly_amount, 0)
@@ -45,11 +46,20 @@ export default function InstallmentsWidget({ installments }: Props) {
       {/* List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {active.slice(0, 4).map(inst => {
+          const card = cards.find(c => c.id === inst.card_id)
           const pct = Math.round((inst.remaining_installments / inst.total_installments) * 100)
           return (
             <div key={inst.id} style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{inst.description}</p>
+                <div>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{inst.description}</p>
+                  {card && (
+                    <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+                      {card.nickname ?? card.bank?.name ?? 'Tarjeta'}
+                      {card.last_four && <span style={{ color: card.accent_color ?? '#9D7BFF' }}> ••{card.last_four}</span>}
+                    </p>
+                  )}
+                </div>
                 <p style={{ fontSize: 12, fontWeight: 700, color: '#9D7BFF' }}>{new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(inst.monthly_amount)}/mes</p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
