@@ -61,7 +61,7 @@ export default function PaymentAlerts({ items, workspaceId }: Props) {
     const today = new Date().toISOString().split('T')[0]
     if (item.type === 'card_statement') {
       await Promise.all([
-        supabase.from('card_statements').update({ status: 'paid' }).eq('id', item.id),
+        supabase.from('card_statements').update({ status: 'paid', closing_balance: 0 }).eq('id', item.id),
         supabase.from('personal_payments').insert({
           workspace_id: workspaceId,
           card_statement_id: item.id,

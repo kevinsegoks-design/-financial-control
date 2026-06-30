@@ -101,9 +101,15 @@ export default function CreditCardCard({ card, statement, floatClass = 'float-1'
         {/* Row 2: chip + card number */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <Chip />
-          <p className="mono" style={{ fontSize: 14, letterSpacing: '0.18em', color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>
-            •••• •••• •••• {card.last_four ?? '----'}
-          </p>
+          {card.last_four ? (
+            <p className="mono" style={{ fontSize: 14, letterSpacing: '0.18em', color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>
+              •••• •••• •••• {card.last_four}
+            </p>
+          ) : (
+            <a href="/personal/cards" style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', textDecoration: 'none' }}>
+              Sin número · Editar →
+            </a>
+          )}
         </div>
 
         {/* Row 3: name + available + bar */}

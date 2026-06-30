@@ -32,7 +32,7 @@ export default function PaymentsClient({ statements, obligationPeriods, recentPa
 
   async function registerPayment(type: 'statement' | 'obligation', id: string, defaultAmount: number) {
     const amount = parseFloat(amounts[id] || String(defaultAmount))
-    if (!amount) return
+    if (!amount || amount <= 0) return
     setLoading(id)
 
     const payload: any = {
@@ -44,9 +44,11 @@ export default function PaymentsClient({ statements, obligationPeriods, recentPa
 
     if (type === 'statement') {
       payload.card_statement_id = id
+      const newBalance = Math.max(0, defaultAmount - amount)
       await supabase.from('personal_payments').insert(payload)
       await supabase.from('card_statements').update({
-        status: amount >= defaultAmount ? 'paid' : 'partial',
+        closing_balance: newBalance,
+        status: newBalance === 0 ? 'paid' : 'partial',
       }).eq('id', id)
     } else {
       payload.obligation_period_id = id
@@ -124,10 +126,16 @@ export default function PaymentsClient({ statements, obligationPeriods, recentPa
                   </div>
 
                   {/* Advertencia de interés */}
-                  {interestIfMin && interestIfMin > 0.5 && (
+                  {interestIfMin && interestIfMin > 0.5 ? (
                     <div style={{ background: 'rgba(255,69,58,0.08)', border: '1px solid rgba(255,69,58,0.2)', borderRadius: 8, padding: '7px 10px', marginBottom: 10 }}>
                       <p style={{ fontSize: 11, color: '#FF453A' }}>
-                        ⚠️ Si pagas solo el mínimo, deberás <strong>{fmtUSD(interestIfMin)}</strong> extra el próximo mes en intereses (~{card?.interest_rate ?? 17}% anual)
+                        ⚠️ Si pagas solo el mínimo, generarás <strong>{fmtUSD(interestIfMin)}</strong> en intereses el próximo mes ({card?.interest_rate ?? 17}% anual)
+                      </p>
+                    </div>
+                  ) : remaining > 0 && (
+                    <div style={{ background: 'rgba(255,159,10,0.07)', border: '1px solid rgba(255,159,10,0.2)', borderRadius: 8, padding: '7px 10px', marginBottom: 10 }}>
+                      <p style={{ fontSize: 11, color: '#FF9F0A' }}>
+                        💡 Si no pagas este mes generarás <strong>{fmtUSD(remaining * (card?.interest_rate ?? 17) / 100 / 12)}</strong> en intereses ({card?.interest_rate ?? 17}% anual)
                       </p>
                     </div>
                   )}
