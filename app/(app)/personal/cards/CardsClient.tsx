@@ -209,6 +209,11 @@ export default function CardsClient({ cards, banks, members, statements, install
     if (!error) { setDiferidoCardId(null); router.refresh() }
   }
 
+  async function handleCancelInstallment(id: string) {
+    await supabase.from('installments').update({ status: 'cancelled' }).eq('id', id)
+    router.refresh()
+  }
+
   return (
     <div style={{ maxWidth: 560, margin: '0 auto', padding: '20px 16px' }}>
       {/* Header */}
@@ -647,6 +652,91 @@ export default function CardsClient({ cards, banks, members, statements, install
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* ── Diferidos activos ──────────────────────────────────────── */}
+      {installments.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 800 }}>Diferidos activos</h2>
+            <span style={{ fontSize: 11, color: '#9D7BFF', fontWeight: 700 }}>
+              {installments.length} compra{installments.length !== 1 ? 's' : ''} ·{' '}
+              {fmtMXN(installments.reduce((s, i) => s + i.monthly_amount, 0))}/mes
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {installments.map(inst => {
+              const card = cards.find(c => c.id === inst.card_id)
+              const accent = card?.accent_color ?? '#9D7BFF'
+              const paid = inst.total_installments - inst.remaining_installments
+              const pct = Math.round((paid / inst.total_installments) * 100)
+              const hasInterest = inst.notes?.includes('interés')
+              return (
+                <div key={inst.id} className="glass" style={{ padding: '14px 16px', borderColor: 'rgba(157,123,255,0.15)', position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, #9D7BFF, #9D7BFF44)` }} />
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <span style={{ fontSize: 11, color: accent, fontWeight: 700 }}>
+                          {card?.nickname ?? card?.bank?.name ?? 'Tarjeta'}
+                        </span>
+                        {hasInterest && (
+                          <span style={{ fontSize: 9, background: 'rgba(255,159,10,0.15)', border: '1px solid rgba(255,159,10,0.3)', color: '#FF9F0A', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>
+                            CON INTERÉS
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{inst.description}</p>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        Inicio: {new Date(inst.start_date + 'T12:00:00').toLocaleDateString('es-EC', { month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                      <p style={{ fontSize: 16, fontWeight: 800, color: '#9D7BFF' }}>{fmtMXN(inst.monthly_amount)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-muted)' }}>/mes</span></p>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                        Resta: <strong style={{ color: 'var(--text-secondary)' }}>{fmtMXN(inst.remaining_balance)}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Progress */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                        Cuota {paid + 1} de {inst.total_installments}
+                      </span>
+                      <span style={{ fontSize: 10, color: '#9D7BFF', fontWeight: 700 }}>{pct}% pagado</span>
+                    </div>
+                    <div style={{ height: 5, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', width: `${pct}%`,
+                        background: 'linear-gradient(90deg, #9D7BFF88, #9D7BFF)',
+                        borderRadius: 3, boxShadow: '0 0 8px #9D7BFF60',
+                        transition: 'width 0.8s ease',
+                      }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
+                      {Array.from({ length: inst.total_installments }).map((_, i) => (
+                        <div key={i} style={{
+                          width: Math.min(16, Math.floor(280 / inst.total_installments) - 2),
+                          height: 6, borderRadius: 2, flexShrink: 0,
+                          background: i < paid ? '#9D7BFF' : i === paid ? '#9D7BFF44' : 'rgba(255,255,255,0.08)',
+                        }} />
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleCancelInstallment(inst.id)}
+                    style={{ fontSize: 11, color: 'var(--text-muted)', background: 'none', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}
+                  >
+                    Cancelar diferido
+                  </button>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
